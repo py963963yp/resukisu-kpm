@@ -1,7 +1,9 @@
+#include "feature/selinux_hide.h"
 #include <linux/err.h>
 #include <linux/fs.h>
 #include <linux/namei.h>
 #include <linux/printk.h>
+#include <linux/version.h>
 
 #include "policy/allowlist.h"
 #include "klog.h" // IWYU pragma: keep
@@ -27,12 +29,17 @@ void on_post_fs_data(void)
     ksu_observer_init();
     // sanity check, this may influence the performance
     ksu_stop_input_hook_runtime();
+    ksu_selinux_hide_handle_post_fs_data();
+
+    // scan manager
+    pr_info("post-fs-data triggered, scanning manager...");
+    track_throne(0);
 }
 
+#if defined(CONFIG_EXT4_FS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0) || defined(KSU_HAS_MODERN_EXT4))
 extern void ext4_unregister_sysfs(struct super_block *sb);
 int nuke_ext4_sysfs(const char *mnt)
 {
-#ifdef CONFIG_EXT4_FS
     struct path path;
     struct super_block *sb = NULL;
     const char *name = NULL;
@@ -56,8 +63,14 @@ int nuke_ext4_sysfs(const char *mnt)
     path_put(&path);
 
     return 0;
-#endif
 }
+#else
+int nuke_ext4_sysfs(const char *mnt)
+{
+    pr_info("%s: feature not implemented!\n", __func__);
+    return 0;
+}
+#endif
 
 void on_module_mounted(void)
 {
@@ -69,5 +82,6 @@ void on_boot_completed(void)
 {
     ksu_boot_completed = true;
     pr_info("on_boot_completed!\n");
-    track_throne(true, false);
+    track_throne(TRACK_THRONE_PRUNE_ONLY);
+    ksu_selinux_hide_drop_backup_if_unused();
 }

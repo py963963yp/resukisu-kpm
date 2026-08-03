@@ -26,6 +26,10 @@ sealed interface Route : NavKey, Parcelable {
 
     @Parcelize
     @Serializable
+    data object Sulog : Route
+
+    @Parcelize
+    @Serializable
     data object Main : Route
 
     @Parcelize
@@ -85,11 +89,7 @@ sealed interface Route : NavKey, Parcelable {
 
     @Parcelize
     @Serializable
-    data object MoreSettings : Route
-
-    @Parcelize
-    @Serializable
-    data object LogViewer : Route
+    data object ThemeSettings : Route
 
     @Parcelize
     @Serializable
@@ -97,10 +97,12 @@ sealed interface Route : NavKey, Parcelable {
 
     @Parcelize
     @Serializable
+    data object DynamicManager : Route
+
+    @Parcelize
+    @Serializable
     data class KernelFlash(
         val kernelUri: @Contextual Uri,
-        val selectedSlot: String?,
-        val kpmPatchEnabled: Boolean,
-        val kpmUndoPatch: Boolean
+        val selectedSlot: String?
     ) : Route
 }

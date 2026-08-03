@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.twotone.Close
+import androidx.compose.material.icons.twotone.Save
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -25,7 +25,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
@@ -48,11 +47,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.resukisu.resukisu.R
 import com.resukisu.resukisu.ui.component.KeyEventBlocker
+import com.resukisu.resukisu.ui.component.SwipeableSnackbarHost
 import com.resukisu.resukisu.ui.component.settings.AppBackButton
 import com.resukisu.resukisu.ui.navigation.LocalNavigator
+import com.resukisu.resukisu.ui.theme.CardConfig
 import com.resukisu.resukisu.ui.theme.ThemeConfig
-import com.resukisu.resukisu.ui.theme.haze
-import com.resukisu.resukisu.ui.theme.hazeSource
+import com.resukisu.resukisu.ui.theme.blurEffect
+import com.resukisu.resukisu.ui.theme.blurSource
 import com.resukisu.resukisu.ui.util.LocalSnackbarHost
 import com.resukisu.resukisu.ui.util.runModuleAction
 import kotlinx.coroutines.Dispatchers
@@ -69,7 +70,7 @@ import java.util.Locale
 fun ExecuteModuleActionScreen(moduleId: String) {
     var text by rememberSaveable { mutableStateOf("") }
     var tempText : String
-    val logContent = rememberSaveable { StringBuilder() }
+    val logContent = remember { StringBuilder() }
     val snackBarHost = LocalSnackbarHost.current
     val scope = rememberCoroutineScope()
     val state = rememberLazyListState()
@@ -157,7 +158,7 @@ fun ExecuteModuleActionScreen(moduleId: String) {
                 val navigator = LocalNavigator.current
                 ExtendedFloatingActionButton(
                     text = { Text(text = stringResource(R.string.close)) },
-                    icon = { Icon(Icons.Filled.Close, contentDescription = null) },
+                    icon = { Icon(Icons.TwoTone.Close, contentDescription = null) },
                     onClick = {
                         navigator.pop()
                     }
@@ -167,7 +168,7 @@ fun ExecuteModuleActionScreen(moduleId: String) {
         containerColor = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
         contentWindowInsets = WindowInsets.safeDrawing,
-        snackbarHost = { SnackbarHost(snackBarHost) }
+        snackbarHost = { SwipeableSnackbarHost(hostState = snackBarHost) }
     ) { innerPadding ->
         KeyEventBlocker {
             it.key == Key.VolumeDown || it.key == Key.VolumeUp
@@ -179,7 +180,7 @@ fun ExecuteModuleActionScreen(moduleId: String) {
             modifier = Modifier
                 .fillMaxSize(1f)
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .hazeSource(),
+                .blurSource(),
         ) {
             item {
                 Spacer(modifier = Modifier.height(innerPadding.calculateTopPadding()))
@@ -209,8 +210,7 @@ private fun TopBar(
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     LargeFlexibleTopAppBar(
-        modifier = Modifier.haze(
-            scrollBehavior.state.collapsedFraction
+        modifier = Modifier.blurEffect(
         ),
         title = { Text(stringResource(R.string.action)) },
         scrollBehavior = scrollBehavior,
@@ -225,18 +225,22 @@ private fun TopBar(
                 enabled = !isActionRunning
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Save,
+                    imageVector = Icons.TwoTone.Save,
                     contentDescription = stringResource(id = R.string.save_log),
                 )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor =
-                if (ThemeConfig.backgroundImageLoaded) Color.Transparent
-                else MaterialTheme.colorScheme.surfaceContainer,
+                if (ThemeConfig.isEnableBlur)
+                    Color.Transparent
+                else
+                    MaterialTheme.colorScheme.surfaceContainer.copy(CardConfig.cardAlpha),
             scrolledContainerColor =
-                if (ThemeConfig.backgroundImageLoaded) Color.Transparent
-                else MaterialTheme.colorScheme.surfaceContainer,
+                if (ThemeConfig.isEnableBlur)
+                    Color.Transparent
+                else
+                    MaterialTheme.colorScheme.surfaceContainer.copy(CardConfig.cardAlpha),
         ),
         windowInsets = TopAppBarDefaults.windowInsets.add(WindowInsets(left = 12.dp))
     )

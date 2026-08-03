@@ -7,29 +7,36 @@
 A based-on [`SukiSU-Ultra/SukiSU-Ultra`](https://github.com/SukiSU-Ultra/SukiSU-Ultra) fork, added some interesting changes, also make it more stable and build easily.
 
 [![Latest release](https://img.shields.io/github/v/release/ReSukiSU/ReSukiSU?label=Release&logo=github)](https://github.com/ReSukiSU/ReSukiSU/releases/latest)
+[![Latest CI build (nightly.link)](https://img.shields.io/badge/nightly.link-Latest%20CI%20Build-800080)](https://nightly.link/ReSukiSU/ReSukiSU/workflows/build-manager/main)
 [![Channel](https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram)](https://t.me/ReSukisu)
-[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-orange.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
-[![GitHub License](https://img.shields.io/github/license/tiann/KernelSU?logo=gnu)](/LICENSE)
+[![Kernel License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-orange.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![Other part License：GPL v3](https://img.shields.io/github/license/ReSukiSU/ReSukiSU?logo=gnu)](/LICENSE)
 
 ## Features
 
 1. Kernel-based `su` and root access management
-2. Module system based on [Magic Mount](https://github.com/5ec1cff/KernelSU)
-   > **Note:** ReSukiSU now delegates all module mounting to the installed *metamodule*; the core no longer handles mount operations.
+2. Module system based on [metamodules](https://kernelsu.org/guide/metamodule.html): Pluggable infrastructure for systemless modifications.
 3. [App Profile](https://kernelsu.org/guide/app-profile.html): Lock up the root power in a cage
 4. Support non-GKI and GKI 1.0
-5. KPM Support
-6. Tweaks to the manager theme and the built-in susfs management tool.
+5. Tweaks to the manager theme and the built-in susfs management tool.
+6. Multi manager support, for default [Official KernelSU](https://github.com/tiann/KernelSU)/[RKSU](https://github.com/rsuntk/KernelSU)/[MKSU](https://github.com/5ec1cff/KernelSU)/[SukiSU](https://github.com/SukiSU-Ultra/SukiSU-Ultra) is supported work as manager with ReSukiSU's kernel
 
 ## Compatibility Status
 
 - ReSukiSU officially supports Android GKI 2.0 devices (kernel 5.10+).
 
-- Older kernels (4.4+) are also compatible, but the kernel will have to be built manually.
+- Older kernels (3.4+) are also compatible, but the kernel will have to be built manually.
 
-- With more backports, SukiSU can support 3.x kernel (3.4-3.18).
+- Currently, only `arm64-v8a`, `armeabi-v7a` and `X86_64`are supported.
 
-- Currently, only `arm64-v8a`, `armeabi-v7a (bare)` and `X86_64`(some) are supported.
+- [SuSFS](https://gitlab.com/simonpunk/susfs4ksu) in this project is **Only** support backport to kernel 4.3+
+
+- `Tracepoint Syscall Redirect hook` is only support with GKI2(5.10+) kernel
+
+## Hook Mode
+- `Tracepoint Syscall Redirect hook` The default hook mode, from [upstream](https://github.com/tiann/KernelSU), but its only support GKI2 kernel with `arm64-v8a` or `x86_64` ABI
+- `Manual Hook` The most compatible Hook, support from Linux kernel 3.4 to Linux kernel 6.18
+- `SuSFS Inline Hook` An hook from [SuSFS](https://github.com/simonpunk/susfs4ksu), like `Manual Hook`, but provide from `SuSFS` project, not this project
 
 ## Integration
 
@@ -38,21 +45,6 @@ See the [documentation](https://ReSukiSU.github.io).
 ## Translation
 
 If you need to submit a translation for the manager, please go to [Crowdin](https://crowdin.com/project/ReSukiSU).
-
-## KPM Support
-
-- Based on KernelPatch, we removed features redundant with KSU and retained only KPM support.
-- Work in Progress: Expanding APatch compatibility by integrating additional functions to ensure compatibility across different implementations.
-
-**Open-source repository**: [https://github.com/ShirkNeko/SukiSU_KernelPatch_patch](https://github.com/ShirkNeko/SukiSU_KernelPatch_patch)
-
-**KPM template**: [https://github.com/udochina/KPM-Build-Anywhere](https://github.com/udochina/KPM-Build-Anywhere)
-
-> [!Note]
->
-> 1. Requires `CONFIG_KPM=y`
-> 2. Non-GKI devices requires `CONFIG_KALLSYMS=y` and `CONFIG_KALLSYMS_ALL=y`
-> 3. For kernels below `4.19`, backporting from `set_memory.h` from `4.19` is required.
 
 ## Sponsor
 
@@ -77,9 +69,18 @@ If you need to submit a translation for the manager, please go to [Crowdin](http
 - The images of the files `ic_launcher(?!.*alt.*).*` with anime character sticker are copyrighted by [怡子曰曰](https://space.bilibili.com/10545509), the Brand Intellectual Property in the images is owned by [明风 OuO](https://space.bilibili.com/274939213), and the vectorization is done by @MiRinChan. Before using these files, in addition to complying with [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.txt), you also need to comply with the authorization of the two authors to use these artistic contents.
 - Except for the files or directories mentioned above, all other parts are under [GPL-3.0 or later](https://www.gnu.org/licenses/gpl-3.0.html) license.
 
+## Localization
+
+Help translate ReSukiSU on Weblate:
+
+https://hosted.weblate.org/engage/resukisu/
+
+[![Localization Status](https://hosted.weblate.org/widget/resukisu/strings/multi-auto.svg)](https://hosted.weblate.org/engage/resukisu/)
+
 ## Credit
 
-- [SukiSU-Ultra/SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra)： upstream
+- [KernelSU](https://github.com/tiann/KernelSU): upstream
+- [SukiSU-Ultra/SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra): fork source
 
 <details>
 <summary>SukiSU's credit</summary>

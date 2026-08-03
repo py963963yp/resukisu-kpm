@@ -13,58 +13,16 @@
 #include "klog.h" // IWYU pragma: keep
 #include "kernel_compat.h"
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0) || defined(KSU_COMPAT_IS_HISI_LEGACY) ||                             \
-    defined(KSU_COMPAT_IS_HISI_LEGACY_HM2) || defined(CONFIG_KSU_ALLOWLIST_WORKAROUND)
-#include <linux/key.h>
-#include <linux/errno.h>
-#include <linux/cred.h>
-#include <linux/lsm_hooks.h>
-#include <linux/bitmap.h>
-
-extern int install_session_keyring_to_cred(struct cred *, struct key *);
-struct key *init_session_keyring = NULL;
-
-static int install_session_keyring(struct key *keyring)
-{
-    struct cred *new;
-    int ret;
-
-    new = prepare_creds();
-    if (!new)
-        return -ENOMEM;
-
-    ret = install_session_keyring_to_cred(new, keyring);
-    if (ret < 0) {
-        abort_creds(new);
-        return ret;
-    }
-
-    return commit_creds(new);
-}
-#endif
-
-struct file *ksu_filp_open_compat(const char *filename, int flags, umode_t mode)
-{
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0) || defined(KSU_COMPAT_IS_HISI_LEGACY) ||                             \
-    defined(KSU_COMPAT_IS_HISI_LEGACY_HM2) || defined(CONFIG_KSU_ALLOWLIST_WORKAROUND)
-    if (init_session_keyring != NULL && !current_cred()->session_keyring && (current->flags & PF_WQ_WORKER)) {
-        pr_info("installing init session keyring for older kernel\n");
-        install_session_keyring(init_session_keyring);
-    }
-#endif
-    return filp_open(filename, flags, mode);
-}
-
 ssize_t ksu_kernel_read_compat(struct file *p, void *buf, size_t count, loff_t *pos)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0) || defined(KSU_OPTIONAL_KERNEL_READ)
     return kernel_read(p, buf, count, pos);
-#else
-    loff_t offset = pos ? *pos : 0;
-    ssize_t result = kernel_read(p, offset, (char *)buf, count);
-    if (pos && result > 0) {
-        *pos = offset + result;
-    }
+#else // https://elixir.bootlin.com/linux/v4.14.336/source/fs/read_write.c#L418
+    mm_segment_t old_fs;
+    old_fs = get_fs();
+    set_fs(get_ds());
+    ssize_t result = vfs_read(p, (void __user *)buf, count, pos);
+    set_fs(old_fs);
     return result;
 #endif
 }
@@ -73,13 +31,13 @@ ssize_t ksu_kernel_write_compat(struct file *p, const void *buf, size_t count, l
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0) || defined(KSU_OPTIONAL_KERNEL_WRITE)
     return kernel_write(p, buf, count, pos);
-#else
-    loff_t offset = pos ? *pos : 0;
-    ssize_t result = kernel_write(p, buf, count, offset);
-    if (pos && result > 0) {
-        *pos = offset + result;
-    }
-    return result;
+#else // https://elixir.bootlin.com/linux/v4.14.336/source/fs/read_write.c#L512
+    mm_segment_t old_fs;
+    old_fs = get_fs();
+    set_fs(get_ds());
+    ssize_t res = vfs_write(p, (__force const char __user *)buf, count, pos);
+    set_fs(old_fs);
+    return res;
 #endif
 }
 
@@ -120,8 +78,9 @@ long ksu_strncpy_from_user_nofault(char *dst, const void __user *unsafe_addr, lo
 }
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0) && !defined(KSU_HAS_PATH_MOUNT))
-int path_mount(const char *dev_name, struct path *path, const char *type_page, unsigned long flags, void *data_page)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
+__weak int path_mount(const char *dev_name, struct path *path, const char *type_page, unsigned long flags,
+                      void *data_page)
 {
     // 384 is enough
     char buf[384] = { 0 };
@@ -183,21 +142,95 @@ void *ksu_compat_kvrealloc(const void *p, size_t oldsize, size_t newsize, gfp_t 
 }
 #endif
 
-#ifndef KSU_COMPAT_HAS_BITMAP_ALLOC_HELPER
-// kernels below 4.19 may not have these three helpers, but implementing them is straightforward.
-// copied from: https://github.com/torvalds/linux/commit/c42b65e363ce97a828f81b59033c3558f8fa7f70
-unsigned long *ksu_bitmap_alloc(unsigned int nbits, gfp_t flags)
+// https://github.com/torvalds/linux/commit/e73f8959af0439d114847eab5a8a5ce48f1217c4
+// this feature include in 3.5, but from my test, we no need that for 3.5-
+// directly call is enough
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)
+#include <linux/task_work.h>
+struct ksu_task_work_struct {
+    struct callback_head cb;
+    void (*callback)(void *);
+    void *data;
+};
+
+static void ksu_task_work_dispatcher(struct callback_head *cb)
 {
-    return kmalloc_array(BITS_TO_LONGS(nbits), sizeof(unsigned long), flags);
+    struct ksu_task_work_struct *tw = container_of(cb, struct ksu_task_work_struct, cb);
+    tw->callback(tw->data);
+    kfree(tw);
+}
+#endif
+
+void ksu_run_in_init_if_possible(void (*callback)(void *), void *data)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)
+    struct task_struct *tsk;
+
+    tsk = get_pid_task(find_vpid(1), PIDTYPE_PID);
+    if (!tsk) {
+        pr_err("ksu run in init find init task err\n");
+        return;
+    }
+
+    // GFP_ATOMIC here, i don't want think the caller is in atomic context or not
+    struct ksu_task_work_struct *tw = kzalloc(sizeof(struct ksu_task_work_struct), GFP_ATOMIC);
+    if (!tw) {
+        pr_err("ksu run in init alloc tw err\n");
+        goto put_task;
+    }
+
+    tw->callback = callback;
+    tw->data = data;
+    tw->cb.func = ksu_task_work_dispatcher;
+
+    if (task_work_add(tsk, &tw->cb, TWA_RESUME)) {
+        kfree(tw);
+        pr_warn("ksu run in init add task_work failed\n");
+    }
+
+put_task:
+    put_task_struct(tsk);
+#else
+    callback(data);
+#endif
 }
 
-unsigned long *ksu_bitmap_zalloc(unsigned int nbits, gfp_t flags)
+#ifdef KSU_COMPAT_REQUIRE_SESSION_KEYRING
+#include <linux/key.h>
+#include <linux/errno.h>
+#include <linux/cred.h>
+#include "ksu.h"
+
+static inline struct key *ksu_get_session_keyring(const struct cred *cred)
 {
-    return ksu_bitmap_alloc(nbits, flags | __GFP_ZERO);
+// https://github.com/torvalds/linux/commit/3a50597de8635cd05133bd12c95681c82fe7b878
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
+    return rcu_dereference(cred->session_keyring);
+#else
+    return rcu_dereference(current->cred->tgcred->session_keyring);
+#endif
 }
 
-void ksu_bitmap_free(const unsigned long *bitmap)
+extern int install_session_keyring_to_cred(struct cred *, struct key *);
+
+// WARNING! Make sure caller in init!!!
+// https://github.com/torvalds/linux/commit/5c7e372caa35d303e414caeb64ee2243fd3cac3d
+// in our target kernel version, it are protected by rcu, so let's rcu_dereference here
+void setup_ksu_cred_session_keyring(void)
 {
-    kfree(bitmap);
+    if (ksu_get_session_keyring(ksu_cred)) {
+        // if we have session_keyring, skip
+        return;
+    }
+
+    if (strcmp(current->comm, "init")) {
+        // we are only interested in `init` process
+        return;
+    }
+
+    install_session_keyring_to_cred(ksu_cred, ksu_get_session_keyring(current_cred()));
+
+    pr_info("kernel_compat: %s: install init_session_keyring to ksu_cred\n", __func__);
 }
+
 #endif

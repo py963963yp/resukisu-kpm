@@ -1,14 +1,4 @@
-#![deny(clippy::all, clippy::pedantic)]
-#![warn(clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss,
-    clippy::doc_markdown,
-    clippy::too_many_lines,
-    clippy::cast_possible_wrap
-)]
+#![feature(decl_macro)]
 
 #[cfg(target_os = "android")]
 mod android;

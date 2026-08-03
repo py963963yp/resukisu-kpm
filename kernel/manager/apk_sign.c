@@ -13,8 +13,12 @@
 #else
 #include <crypto/sha.h>
 #endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+#include <linux/hex.h>
+#endif
 
 #include "manager/apk_sign.h"
+#include "manager/manager_identity.h"
 #include "policy/app_profile.h"
 #include "feature/dynamic_manager.h"
 #include "klog.h" // IWYU pragma: keep
@@ -36,6 +40,9 @@ static apk_sign_key_t apk_sign_keys[] = {
     { EXPECTED_SIZE_KOWX712, EXPECTED_HASH_KOWX712 }, // KOWX712/KernelSU
 #ifdef EXPECTED_SIZE
     { EXPECTED_SIZE, EXPECTED_HASH }, // Custom
+#endif
+#ifdef EXPECTED_PR_BUILD_SIZE
+    { EXPECTED_PR_BUILD_SIZE, EXPECTED_PR_BUILD_HASH }, // Custom 2 (For PR build)
 #endif
 #endif
 };
@@ -95,17 +102,23 @@ static bool check_block(struct file *fp, u32 *size4, loff_t *pos, u32 *offset, u
 #define CERT_MAX_LENGTH 1024
     char cert[CERT_MAX_LENGTH];
 
-    ksu_kernel_read_compat(fp, size4, 0x4, pos); // signer-sequence length
-    ksu_kernel_read_compat(fp, size4, 0x4, pos); // signer length
-    ksu_kernel_read_compat(fp, size4, 0x4, pos); // signed data length
+    if (ksu_kernel_read_compat(fp, size4, 0x4, pos) != 0x4) // signer-sequence length
+        return false;
+    if (ksu_kernel_read_compat(fp, size4, 0x4, pos) != 0x4) // signer length
+        return false;
+    if (ksu_kernel_read_compat(fp, size4, 0x4, pos) != 0x4) // signed data length
+        return false;
     *offset += 0x4 * 3;
 
-    ksu_kernel_read_compat(fp, size4, 0x4, pos); // digests-sequence length
+    if (ksu_kernel_read_compat(fp, size4, 0x4, pos) != 0x4) // digests-sequence length
+        return false;
     *pos += *size4;
     *offset += 0x4 + *size4;
 
-    ksu_kernel_read_compat(fp, size4, 0x4, pos); // certificates length
-    ksu_kernel_read_compat(fp, size4, 0x4, pos); // certificate length
+    if (ksu_kernel_read_compat(fp, size4, 0x4, pos) != 0x4) // certificates length
+        return false;
+    if (ksu_kernel_read_compat(fp, size4, 0x4, pos) != 0x4) // certificate length
+        return false;
     *offset += 0x4 * 2;
 
     if (*size4 > CERT_MAX_LENGTH) {
@@ -123,8 +136,11 @@ static bool check_block(struct file *fp, u32 *size4, loff_t *pos, u32 *offset, u
     bin2hex(hash_str, digest, SHA256_DIGEST_SIZE);
     hash_str[SHA256_DIGEST_SIZE * 2] = '\0';
 
-    BUILD_BUG_ON(ARRAY_SIZE(apk_sign_keys) >=
-                 255); // keep 255, because i want use 255 as the magic number of dynamic manager
+    // keep 255, 254, 253 here
+    // 255 reserved for dynamic manager
+    // 254 reserved for ksu debug
+    // 253 reserved for ksu toolkit
+    BUILD_BUG_ON(ARRAY_SIZE(apk_sign_keys) >= 253);
     for (i = 0; i < ARRAY_SIZE(apk_sign_keys); i++) {
         sign_key = apk_sign_keys[i];
         if (*size4 == sign_key.size && strcmp(sign_key.sha256, hash_str) == 0) {
@@ -139,7 +155,7 @@ static bool check_block(struct file *fp, u32 *size4, loff_t *pos, u32 *offset, u
         sign_key = ksu_get_dynamic_manager_sign();
         if (*size4 == sign_key.size && strcmp(sign_key.sha256, hash_str) == 0) {
             if (matched_index)
-                *matched_index = DYNAMIC_MANAGER_SIGNATURE_INDEX_MAGIC;
+                *matched_index = KSU_SIGNATURE_INDEX_DYNAMIC_MANAGER;
             signature_valid = true;
         }
     }
@@ -213,7 +229,7 @@ static __always_inline bool check_v2_signature(char *path, u8 *signature_index)
     bool v3_1_signing_exist = false;
     u8 matched_index = -1;
     int i;
-    struct file *fp = ksu_filp_open_compat(path, O_RDONLY, 0);
+    struct file *fp = filp_open(path, O_RDONLY, 0);
     if (IS_ERR(fp)) {
         pr_err("open %s error.\n", path);
         return false;
@@ -242,17 +258,25 @@ static __always_inline bool check_v2_signature(char *path, u8 *signature_index)
 
     pos += 12;
     // offset
-    ksu_kernel_read_compat(fp, &size4, 0x4, &pos);
+    if (ksu_kernel_read_compat(fp, &size4, 0x4, &pos) != 0x4) {
+        goto clean;
+    }
     pos = size4 - 0x18;
 
-    ksu_kernel_read_compat(fp, &size8, 0x8, &pos);
-    ksu_kernel_read_compat(fp, buffer, 0x10, &pos);
+    if (ksu_kernel_read_compat(fp, &size8, 0x8, &pos) != 0x8) {
+        goto clean;
+    }
+    if (ksu_kernel_read_compat(fp, buffer, 0x10, &pos) != 0x10) {
+        goto clean;
+    }
     if (strcmp((char *)buffer, "APK Sig Block 42")) {
         goto clean;
     }
 
     pos = size4 - (size8 + 0x8);
-    ksu_kernel_read_compat(fp, &size_of_block, 0x8, &pos);
+    if (ksu_kernel_read_compat(fp, &size_of_block, 0x8, &pos) != 0x8) {
+        goto clean;
+    }
     if (size_of_block != size8) {
         goto clean;
     }
@@ -261,12 +285,17 @@ static __always_inline bool check_v2_signature(char *path, u8 *signature_index)
     while (loop_count++ < 10) {
         uint32_t id;
         uint32_t offset;
-        ksu_kernel_read_compat(fp, &size8, 0x8,
-                               &pos); // sequence length
+        if (ksu_kernel_read_compat(fp, &size8, 0x8, &pos) != 0x8) { // sequence length
+            v2_signing_valid = false;
+            goto clean;
+        }
         if (size8 == size_of_block) {
             break;
         }
-        ksu_kernel_read_compat(fp, &id, 0x4, &pos); // id
+        if (ksu_kernel_read_compat(fp, &id, 0x4, &pos) != 0x4) { // id
+            v2_signing_valid = false;
+            goto clean;
+        }
         offset = 4;
         if (id == 0x7109871au) {
             v2_signing_blocks++;
@@ -324,15 +353,13 @@ clean:
 }
 
 #ifdef CONFIG_KSU_DEBUG
-
 int ksu_debug_manager_appid = -1;
-
-#include "manager/manager_identity.h"
 
 static int set_expected_size(const char *val, const struct kernel_param *kp)
 {
     int rv = param_set_uint(val, kp);
-    ksu_set_manager_appid(ksu_debug_manager_appid);
+    ksu_unregister_manager_by_signature_index(KSU_SIGNATURE_INDEX_KSU_DEBUG);
+    ksu_register_manager(ksu_debug_manager_appid, KSU_SIGNATURE_INDEX_KSU_DEBUG);
     pr_info("ksu_manager_appid set to %d\n", ksu_debug_manager_appid);
     return rv;
 }
