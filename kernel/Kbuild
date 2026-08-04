@@ -8,6 +8,7 @@ kernelsu-objs += feature/sulog.o
 kernelsu-objs += feature/adb_root.o
 kernelsu-objs += feature/selinux_hide.o
 kernelsu-objs += hook/setuid_hook.o
+kernelsu-objs += kpm/kpm.o
 
 ifndef CONFIG_KSU_DISABLE_MANAGER
 kernelsu-objs += feature/dynamic_manager.o
@@ -37,7 +38,6 @@ kernelsu-objs += supercall/supercall.o
 
 ifdef CONFIG_ARM64
 kernelsu-objs += compat/apatch_conflict.o
-kernelsu-objs += kpm/kpm.o
 endif
 
 ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes 
