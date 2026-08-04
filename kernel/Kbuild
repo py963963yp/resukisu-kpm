@@ -37,6 +37,7 @@ kernelsu-objs += supercall/supercall.o
 
 ifdef CONFIG_ARM64
 kernelsu-objs += compat/apatch_conflict.o
+kernelsu-objs += kpm/kpm.o
 endif
 
 ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes 
@@ -143,7 +144,7 @@ endif
 ifdef CONFIG_KPM
   $(info -- KPM is enabled)
   $(info -- WARNING, This feature is unstable!!! You are WARNED!!!)
-  kernelsu-objs += kpm/kpm.o
+  
 else
   $(info -- KPM is disabled)
 endif
