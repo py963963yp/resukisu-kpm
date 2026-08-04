@@ -142,8 +142,8 @@ endif
 # Check if KPM is enabled
 ifdef CONFIG_KPM
   $(info -- KPM is enabled)
-  $(info -- WARNING, This feature is unstable!!! You ar
-e WARNED!!!)
+  $(info -- WARNING, This feature is unstable!!! You are WARNED!!!)
+  kernelsu-objs += kpm/kpm.o
 else
   $(info -- KPM is disabled)
 endif
